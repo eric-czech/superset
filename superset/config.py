@@ -17,7 +17,8 @@ from dateutil import tz
 from flask_appbuilder.security.manager import AUTH_DB
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-DATA_DIR = os.path.join(os.path.expanduser('~'), '.superset')
+# DATA_DIR = os.path.join(os.path.expanduser('~'), '.superset')
+DATA_DIR = os.path.expanduser('~/repos/mgds/superset')
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
