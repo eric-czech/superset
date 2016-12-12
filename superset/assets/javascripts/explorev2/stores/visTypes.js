@@ -607,6 +607,29 @@ const visTypes = {
     ],
   },
 
+//  heatmapx: {
+//    label: 'Heatmapx',
+//    controlPanelSections: [
+//      {
+//        label: 'Axis & Metrics',
+//        fieldSetRows: [
+//          ['all_columns_x'],
+//          ['all_columns_y'],
+//          ['metric'],
+//        ],
+//      },
+//      {
+//        label: 'Heatmap Options',
+//        fieldSetRows: [
+//          ['linear_color_scheme'],
+//          ['xscale_interval', 'yscale_interval'],
+//          ['canvas_image_rendering'],
+//          ['normalize_across'],
+//        ],
+//      },
+//    ],
+//  },
+
   horizon: {
     label: 'Horizon',
     controlPanelSections: [

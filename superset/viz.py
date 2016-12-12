@@ -13,6 +13,8 @@ import hashlib
 import logging
 import uuid
 import zlib
+import re
+import os
 
 from collections import OrderedDict, defaultdict
 from datetime import datetime, timedelta
@@ -31,6 +33,8 @@ from dateutil import relativedelta as rdelta
 from superset import app, utils, cache
 from superset.forms import FormFactory
 from superset.utils import flasher, DTTM_ALIAS
+
+import plotly
 
 config = app.config
 
@@ -1809,6 +1813,139 @@ class HeatmapViz(BaseViz):
         return df.to_dict(orient="records")
 
 
+class PlotlyIFrameViz(BaseViz):
+
+    """Plot.ly Viz for IFrame views"""
+
+    viz_type = "iframe"
+    verbose_name = _("iFrame")
+    credits = '<a href="https://plot.ly/">Plotly</a>'
+    is_timeseries = False
+    regex = re.compile('[\W]+')
+
+    def get_filename(self):
+        fd = self.orig_form_data
+
+        def get_val(k, default_value):
+            x = str(fd[k]) if k in fd and fd[k] else default_value
+            return self.regex.sub('', x).lower()
+
+        slice_id = get_val('slice_id', '0')
+        user_id = get_val('user_id', '0')
+        slice_name = get_val('slice_name', 'unnamed')
+        slice_src = get_val('datasource_name', 'unnamed')
+        return ('-'.join([slice_src, slice_name, slice_id, user_id])) + '.html'
+
+    def get_figure_data(self, fig):
+        fig_path = config.get('PLOTLY_CACHE_PATH')
+        fig_dir = config.get('PLOTLY_CACHE_DIR')
+        filename = self.get_filename()
+        filepath = os.path.join(fig_dir, filename)
+        plotly.offline.plot(fig, filename=filepath, auto_open=False)
+        url = os.path.join(os.path.sep + fig_path, filename)
+        return {'url': url}
+
+
+class PlotlyHeatmapViz(PlotlyIFrameViz):
+
+    viz_type = "plotly_heatmap"
+    verbose_name = _("PlotlyHeatmap")
+    is_timeseries = False
+    credits = ('')
+    fieldsets = ({
+        'label': None,
+        'fields': (
+            'all_columns_x',
+            'all_columns_y',
+            'metric',
+        )
+    }, {
+        'label': _('Heatmap Options'),
+        'fields': (
+            'linear_color_scheme',
+            ('xscale_interval', 'yscale_interval'),
+            'canvas_image_rendering',
+            'normalize_across',
+        )
+    },)
+
+    def query_obj(self):
+        d = super(PlotlyHeatmapViz, self).query_obj()
+        fd = self.form_data
+        d['metrics'] = [fd.get('metric')]
+        d['groupby'] = [fd.get('all_columns_x'), fd.get('all_columns_y')]
+        return d
+
+    def get_data(self):
+        df = self.get_df()
+        fd = self.form_data
+        x = fd.get('all_columns_x')
+        y = fd.get('all_columns_y')
+        v = fd.get('metric')
+        if x == y:
+            df.columns = ['x', 'y', 'v']
+        else:
+            df = df[[x, y, v]]
+            df.columns = ['x', 'y', 'v']
+
+        df = df.pivot_table(index='y', columns='x', values='v').fillna(0)
+        trace = plotly.graph_objs.Heatmap(x=df.columns.values, y=df.index.values, z=df.values)
+        layout = plotly.graph_objs.Layout(title='Test4')
+        fig = plotly.graph_objs.Figure(data=[trace], layout=layout)
+        return self.get_figure_data(fig)
+
+
+
+class MGDSRXLinearViz(BaseViz):
+
+    viz_type = "heatmapx"
+    verbose_name = _("Heatmapx")
+    is_timeseries = False
+    credits = (
+        'inspired from mbostock @<a href="http://bl.ocks.org/mbostock/3074470">'
+        'bl.ocks.org</a>')
+    fieldsets = ({
+        'label': None,
+        'fields': (
+            'all_columns_x',
+            'all_columns_y',
+            'metric',
+        )
+    }, {
+        'label': _('Heatmap Options'),
+        'fields': (
+            'linear_color_scheme',
+            ('xscale_interval', 'yscale_interval'),
+            'canvas_image_rendering',
+            'normalize_across',
+        )
+    },)
+
+    def query_obj(self):
+        d = super(MGDSRXLinearViz, self).query_obj()
+        fd = self.form_data
+        d['metrics'] = [fd.get('metric')]
+        d['groupby'] = [fd.get('all_columns_x'), fd.get('all_columns_y')]
+        return d
+
+    def get_data(self):
+        df = self.get_df()
+        fd = self.form_data
+        x = fd.get('all_columns_x')
+        y = fd.get('all_columns_y')
+        v = fd.get('metric')
+        if x == y:
+            df.columns = ['x', 'y', 'v']
+        else:
+            df = df[[x, y, v]]
+            df.columns = ['x', 'y', 'v']
+        df = df.pivot_table(index='y', columns='x', values='v').fillna(0)
+        df_x = list(df.index.values)
+        df_y = list(df.columns.values)
+        df_z = df.values
+        return {'x': df_x, 'y': df_y, 'z': df_z.tolist()}
+
+
 class HorizonViz(NVD3TimeSeriesViz):
 
     """Horizon chart
@@ -2020,6 +2157,7 @@ viz_types_list = [
     IFrameViz,
     ParallelCoordinatesViz,
     HeatmapViz,
+    PlotlyHeatmapViz,
     BoxPlotViz,
     TreemapViz,
     CalHeatmapViz,

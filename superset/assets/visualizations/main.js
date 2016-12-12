@@ -28,5 +28,6 @@ const vizMap = {
   treemap: require('./treemap.js'),
   word_cloud: require('./word_cloud.js'),
   world_map: require('./world_map.js'),
+  plotly_heatmap: require('./plotly_iframe.js')
 };
 export default vizMap;

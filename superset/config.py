@@ -30,6 +30,12 @@ PACKAGE_FILE = os.path.join(PACKAGE_DIR, 'package.json')
 with open(PACKAGE_FILE) as package_file:
     VERSION_STRING = json.load(package_file)['version']
 
+PLOTLY_CACHE_PATH = os.path.join('static', 'assets', 'plotly_cache')
+PLOTLY_CACHE_DIR = os.path.join(BASE_DIR, PLOTLY_CACHE_PATH)
+if not os.path.exists(PLOTLY_CACHE_DIR):
+    os.makedirs(PLOTLY_CACHE_DIR)
+
+
 ROW_LIMIT = 50000
 SUPERSET_WORKERS = 2
 
