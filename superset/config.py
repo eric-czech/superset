@@ -35,6 +35,11 @@ PLOTLY_CACHE_DIR = os.path.join(BASE_DIR, PLOTLY_CACHE_PATH)
 if not os.path.exists(PLOTLY_CACHE_DIR):
     os.makedirs(PLOTLY_CACHE_DIR)
 
+MATPLOTLIB_CACHE_PATH = os.path.join('static', 'assets', 'matplotlib_cache')
+MATPLOTLIB_CACHE_DIR = os.path.join(BASE_DIR, MATPLOTLIB_CACHE_PATH)
+if not os.path.exists(MATPLOTLIB_CACHE_DIR):
+    os.makedirs(MATPLOTLIB_CACHE_DIR)
+
 
 ROW_LIMIT = 50000
 SUPERSET_WORKERS = 2

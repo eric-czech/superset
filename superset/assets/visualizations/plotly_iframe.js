@@ -9,7 +9,7 @@ function plotlyIFrameVis(slice) {
       const iframe = slice.container.find('iframe');
       iframe.css('height', slice.height());
       iframe.attr('src', url);
-      console.log('Loading plotly iframe at "' + url + '"');
+      //console.log('Loading plotly iframe at "' + url + '"');
       slice.done(payload);
     })
     .fail(function (xhr) {

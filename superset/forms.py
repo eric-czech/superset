@@ -183,6 +183,52 @@ class FormFactory(object):
                 "default": 'blue_white_yellow',
                 "description": ""
             }),
+            'plotly_color_scale': (TextField, {
+                "label": _("Color Scale"),
+                "default": 'Viridis',
+                "description": 'Plotly sequential color scale name'
+            }),
+            'plotly_margins': (TextField, {
+                "label": _("Plot Margins"),
+                "default": '50,50,50,50',
+                "description": 'Margin size for areas around plot in the format "top, right, bottom, left"'
+            }),
+            'plotly_width': (TextField, {
+                "label": _("Plotly Figure Width"),
+                "default": '1000',
+                "description": 'Width of Plotly figure in pixels'
+            }),
+            'plotly_height': (TextField, {
+                "label": _("Plotly Figure Height"),
+                "default": '1000',
+                "description": 'Height of Plotly figure in pixels'
+            }),
+            'add_average_trend': (BetterBooleanField, {
+                "label": _("Add Average Trend"),
+                "default": False,
+                "description": _("Add average values across series")
+            }),
+            'color_log_scale': (BetterBooleanField, {
+                "label": _("Color Scale Log"),
+                "default": False,
+                "description": _("Use a log10 scale for the color scale")
+            }),
+            'reverse_colorscale': (BetterBooleanField, {
+                "label": _("Reverse Color Scale"),
+                "default": False,
+                "description": ("Reverses ordering of color scale")
+            }),
+            'fill_na_with_0': (BetterBooleanField, {
+                "label": _("Fill NA With 0"),
+                "default": False,
+                "description": ("Replaces NA heatmap values with 0")
+            }),
+            'color_field': (SelectField, {
+                "label": _("Color Field"),
+                "choices": group_by_choices,
+                "default": default_groupby,
+                "description": _("This defines the element to use for scatter plot point colors")
+            }),
             'normalize_across': (SelectField, {
                 "label": _("Normalize Across"),
                 "choices": (
@@ -324,6 +370,18 @@ class FormFactory(object):
                 "default": datasource.column_names[0],
                 "description": _("Columns to display")
             }),
+            # 'all_columns_x_multi': (SelectMultipleSortableField, {
+            #     "label": _("X Cols"),
+            #     "choices": self.choicify(datasource.column_names),
+            #     #"default": datasource.column_names[0],
+            #     "description": _("Columns to display")
+            # }),
+            # 'all_columns_y_multi': (SelectMultipleSortableField, {
+            #     "label": _("Y Cols"),
+            #     "choices": self.choicify(datasource.column_names),
+            #     #"default": datasource.column_names[1],
+            #     "description": _("Columns to display")
+            # }),
             'druid_time_origin': (FreeFormSelectField, {
                 "label": _("Origin"),
                 "choices": (

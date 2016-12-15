@@ -35,6 +35,7 @@ from superset.forms import FormFactory
 from superset.utils import flasher, DTTM_ALIAS
 
 import plotly
+from plotly.tools import FigureFactory as FF
 
 config = app.config
 
@@ -143,7 +144,6 @@ class BaseViz(object):
                 v = [v]
             for item in v:
                 od.add(key, item)
-
         base_endpoint = '/superset/explore'
         if json_endpoint:
             base_endpoint = '/superset/explore_json'
@@ -1813,58 +1813,81 @@ class HeatmapViz(BaseViz):
         return df.to_dict(orient="records")
 
 
-class PlotlyIFrameViz(BaseViz):
+FILE_REGEX = re.compile('[\W]+')
 
-    """Plot.ly Viz for IFrame views"""
 
-    viz_type = "iframe"
-    verbose_name = _("iFrame")
-    credits = '<a href="https://plot.ly/">Plotly</a>'
-    is_timeseries = False
-    regex = re.compile('[\W]+')
+class LocalFileViz(BaseViz):
 
-    def get_filename(self):
+    def get_filename(self, ext):
         fd = self.orig_form_data
 
         def get_val(k, default_value):
             x = str(fd[k]) if k in fd and fd[k] else default_value
-            return self.regex.sub('', x).lower()
-
+            return FILE_REGEX.sub('', x).lower()
         slice_id = get_val('slice_id', '0')
         user_id = get_val('user_id', '0')
         slice_name = get_val('slice_name', 'unnamed')
         slice_src = get_val('datasource_name', 'unnamed')
-        return ('-'.join([slice_src, slice_name, slice_id, user_id])) + '.html'
+        return ('-'.join([slice_src, slice_name, slice_id, user_id])) + '.' + ext
+
+
+class PlotlyIFrameViz(LocalFileViz):
+
+    """Plot.ly Viz for IFrame views"""
+
+    credits = '<a href="https://plot.ly/">Plotly</a>'
+    is_timeseries = False
+    regex = re.compile('[\W]+')
+
+    def get_int_property(self, key):
+        try:
+            return int(self.form_data[key])
+        except:
+            return None
+
+    def get_margins(self):
+        fd = self.form_data
+
+        # Margin string should be given as "top, right, bottom, left"
+        margin_string = fd.get('plotly_margins')
+        margins = [int(m.strip()) for m in margin_string.split(',')]
+        assert len(margins) == 4, \
+            'Margin string "{}" not valid (must contain 4 comma separated values)'\
+            .format(margin_string)
+        return {'t': margins[0], 'r': margins[1], 'b': margins[2], 'l': margins[3]}
 
     def get_figure_data(self, fig):
         fig_path = config.get('PLOTLY_CACHE_PATH')
         fig_dir = config.get('PLOTLY_CACHE_DIR')
-        filename = self.get_filename()
+        filename = self.get_filename('html')
         filepath = os.path.join(fig_dir, filename)
         plotly.offline.plot(fig, filename=filepath, auto_open=False)
         url = os.path.join(os.path.sep + fig_path, filename)
+        print('Plotly viz url = ', url)
         return {'url': url}
 
 
 class PlotlyHeatmapViz(PlotlyIFrameViz):
 
     viz_type = "plotly_heatmap"
-    verbose_name = _("PlotlyHeatmap")
+    verbose_name = _("Plotly Heatmap")
     is_timeseries = False
     credits = ('')
     fieldsets = ({
         'label': None,
         'fields': (
-            'all_columns_x',
-            'all_columns_y',
+            'groupby',
+            'columns',
             'metric',
         )
     }, {
         'label': _('Heatmap Options'),
         'fields': (
-            'linear_color_scheme',
-            ('xscale_interval', 'yscale_interval'),
-            'canvas_image_rendering',
+            'plotly_color_scale',
+            'plotly_margins',
+            'fill_na_with_0',
+            'reverse_colorscale',
+            'color_log_scale',
             'normalize_across',
         )
     },)
@@ -1873,25 +1896,186 @@ class PlotlyHeatmapViz(PlotlyIFrameViz):
         d = super(PlotlyHeatmapViz, self).query_obj()
         fd = self.form_data
         d['metrics'] = [fd.get('metric')]
-        d['groupby'] = [fd.get('all_columns_x'), fd.get('all_columns_y')]
+        d['groupby'] = fd.get('groupby') + fd.get('columns')
         return d
 
     def get_data(self):
         df = self.get_df()
         fd = self.form_data
-        x = fd.get('all_columns_x')
-        y = fd.get('all_columns_y')
+        x = fd.get('groupby')
+        y = fd.get('columns')
         v = fd.get('metric')
-        if x == y:
-            df.columns = ['x', 'y', 'v']
-        else:
-            df = df[[x, y, v]]
-            df.columns = ['x', 'y', 'v']
+        df = df[x + y + [v]]
 
-        df = df.pivot_table(index='y', columns='x', values='v').fillna(0)
-        trace = plotly.graph_objs.Heatmap(x=df.columns.values, y=df.index.values, z=df.values)
-        layout = plotly.graph_objs.Layout(title='Test4')
+        df = df.pivot_table(index=y, columns=x, values=v)
+
+        sorted_cols = df.isnull().sum(axis=0).sort_values().index.values
+        df = df[sorted_cols]
+
+        if fd.get('fill_na_with_0'):
+            df = df.fillna(0)
+
+        if fd.get('color_log_scale'):
+            df = (df + 1).applymap(np.log10)
+
+        colorscale = fd.get('plotly_color_scale')
+        reverse_colorscale = fd.get('reverse_colorscale')
+
+        def collapse(c):
+            return c if isinstance(c, str) else ' '.join(c)
+
+        df.index = [collapse(c) for c in df.index]
+        df.columns = [collapse(c) for c in df.columns]
+        trace = plotly.graph_objs.Heatmap(x=df.columns.values, y=df.index.values, z=df.values,
+                                          colorscale=colorscale, reversescale=reverse_colorscale)
+        layout = plotly.graph_objs.Layout(title='Test4', margin=self.get_margins(),
+                                          xaxis=dict(showgrid=False), yaxis=dict(showgrid=False))
         fig = plotly.graph_objs.Figure(data=[trace], layout=layout)
+        return self.get_figure_data(fig)
+
+
+class PlotlyScatterMatrixViz(PlotlyIFrameViz):
+
+    viz_type = "plotly_scattermatrix"
+    verbose_name = _("Plotly Scatter Matrix")
+    is_timeseries = False
+    credits = ('')
+    fieldsets = ({
+        'label': None,
+        'fields': (
+            'groupby',
+            'columns',
+            'metric',
+            'series',
+            # 'order_by_cols'
+        )
+    }, {
+        'label': _('Scatter Matrix Options'),
+        'fields': (
+            'row_limit',
+            'fill_na_with_0',
+            'bar_stacked',
+            'plotly_width',
+            'plotly_height'
+        )
+    },)
+
+    def query_obj(self):
+        d = super(PlotlyScatterMatrixViz, self).query_obj()
+        fd = self.form_data
+        d['metrics'] = [fd.get('metric')]
+        d['groupby'] = fd.get('groupby') + fd.get('columns')
+        # order_by_cols = fd.get('order_by_cols') or []
+        # d['orderby'] = [json.loads(t) for t in order_by_cols]
+        # d['orderby'] = [['DRUG_NAME_MGDS', True]]
+        return d
+
+    def get_data(self):
+        from superset.viz_utils import plotly_scattermatrix
+
+        df = self.get_df()
+        fd = self.form_data
+        x = fd.get('groupby')
+        y = fd.get('columns')
+        v = fd.get('metric')
+        df = df[x + y + [v]]
+
+        #series = df.get('DRUG_NAME_MGDS'
+        series = fd.get('series')
+
+        # row_limit = config.get('ROW_LIMIT')
+        row_limit = int(fd.get('row_limit'))
+        limit_hit = len(df) >= row_limit
+        df = df.pivot_table(index=x, columns=y, values=v)
+
+        if fd.get('fill_na_with_0'):
+            df = df.fillna(0)
+
+        def collapse(c):
+            return c if isinstance(c, str) else '_'.join(c)
+        df.columns = [collapse(c) for c in df.columns]
+        series_values = df.index.get_level_values(series)
+        df.index = [collapse(i) for i in df.index]
+
+        series_limit = 3
+        cts = df.groupby(series_values).apply(lambda g: g.notnull().sum(axis=1).median())
+        top_series_values = cts.sort_values(ascending=False).index.values[:series_limit]
+
+        top_series_mask = np.in1d(series_values, top_series_values)
+        df = df[top_series_mask].dropna(how='all', axis=1)
+        series_values = series_values[top_series_mask]
+
+        title = 'Scatter Matrix<br>({})'\
+            .format('* Row Limit Reached -- Datasets may not be complete' if limit_hit else '# records below row limit')
+        barmode = 'stack' if fd.get('bar_stacked') else 'group'
+
+        height = self.get_int_property('plotly_height') or 1000
+        width = self.get_int_property('plotly_width') or 1000
+
+        fig = plotly_scattermatrix(
+            df, series_values, width=width, height=height,
+            title=title, barmode=barmode
+        )
+        return self.get_figure_data(fig)
+
+
+
+class PlotlyScatterPlotViz(PlotlyIFrameViz):
+
+    viz_type = "plotly_scatterplot"
+    verbose_name = _("Plotly Scatter Plot")
+    is_timeseries = False
+    credits = ('')
+    fieldsets = ({
+        'label': None,
+        'fields': (
+            'groupby',
+            'metric',
+            'series',
+            'entity'
+        )
+    }, {
+        'label': _('Scatter Plot Options'),
+        'fields': (
+            'row_limit',
+            'plotly_width',
+            'plotly_height',
+            'add_average_trend'
+        )
+    },)
+
+    def query_obj(self):
+        d = super(PlotlyScatterPlotViz, self).query_obj()
+        fd = self.form_data
+        d['metrics'] = [fd.get('metric')]
+        d['groupby'] = fd.get('groupby') + [fd.get('series')]
+        return d
+
+    def get_data(self):
+        df = self.get_df()
+        fd = self.form_data
+        x = fd.get('groupby')
+        s = fd.get('series')
+        v = fd.get('metric')
+        e = fd.get('entity')
+        print('Series + Entity = ', s, e)
+        df = df[x + [s, v]]
+
+        traces = []
+        for k, g in df.groupby(s):
+            traces.append(plotly.graph_objs.Scatter(
+                x=g.index,
+                y=g[v],
+                name=k,
+                text=g[e],
+                mode='markers'
+            ))
+
+        height = self.get_int('plotly_height') or 1000
+        width = self.get_int('plotly_width') or 1000
+
+        layout = plotly.graph_objs.Layout(title='Test', width=width, height=height)
+        fig = plotly.graph_objs.Figure(data=traces, layout=layout)
         return self.get_figure_data(fig)
 
 
@@ -2135,6 +2319,8 @@ class MapboxViz(BaseViz):
         }
 
 
+from superset.img_viz import SeabornScatterMatrixViz
+
 viz_types_list = [
     TableViz,
     PivotTableViz,
@@ -2158,6 +2344,9 @@ viz_types_list = [
     ParallelCoordinatesViz,
     HeatmapViz,
     PlotlyHeatmapViz,
+    PlotlyScatterMatrixViz,
+    PlotlyScatterPlotViz,
+    SeabornScatterMatrixViz,
     BoxPlotViz,
     TreemapViz,
     CalHeatmapViz,
